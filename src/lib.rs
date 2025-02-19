@@ -1,5 +1,4 @@
 #![no_std]
-
 use rp235x_hal::{
     gpio, pac::I2C1, I2C,
     uart::{

@@ -122,12 +122,14 @@ mod app {
     }
 
 
-    #[init(local=[
-        // Task local initialized resources are static
-        // Here we use MaybeUninit to allow for initialization in init()
-        // This enables its usage in driver initialization
-        i2c_main_bus: MaybeUninit<AtomicCell<I2CMainBus>> = MaybeUninit::uninit(),
-    ])]
+    #[init(
+        local=[
+            // Task local initialized resources are static
+            // Here we use MaybeUninit to allow for initialization in init()
+            // This enables its usage in driver initialization
+            i2c_main_bus: MaybeUninit<AtomicCell<I2CMainBus>> = MaybeUninit::uninit(),
+        ]
+    )]
     fn init(mut ctx: init::Context) -> (Shared, Local) {
 
         // Reset the spinlocks - this is skipped by soft-reset
@@ -247,7 +249,10 @@ mod app {
         
         let mut delay: DelayTimer = rp235x_hal::Timer::new_timer1(ctx.device.TIMER1, &mut ctx.device.RESETS, &clocks); 
         let mut bme280 = Bme280::new(AtomicDevice::new(i2c_bus), delay);
+        // let mut acc_gyro = ;
+        // let mut mag = ;
         
+
         // Set up USB Device allocator
         let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
             ctx.device.USB,
