@@ -58,15 +58,12 @@ mod app {
     use hal::{
         gpio::{self, FunctionSio, PullNone, SioOutput},
         sio::Sio,
-        
-    };
-    use rp235x_hal::{
-        clocks::{init_clocks_and_plls},
+        pac::interrupt,
+        clocks::init_clocks_and_plls,
         pwm::Slices,
         uart::{DataBits, StopBits, UartConfig, UartPeripheral},
         Clock, Watchdog,
-        I2C,
-        pac::I2C1,
+        I2C
     };
     const XTAL_FREQ_HZ: u32 = 12_000_000u32;
 
@@ -95,13 +92,15 @@ mod app {
     use core::{
         cmp::max,
         mem::MaybeUninit,
-        result::Result
     };
-    use bme280_rs::{AsyncBme280, Configuration, Oversampling, SensorMode};
-    use embedded_hal_async::delay::DelayNs;
-    use embedded_hal_async::i2c::I2c;
-    use embedded_hal::{digital::{OutputPin, StatefulOutputPin}};
+    use bme280_rs::{AsyncBme280, Bme280};
 
+    use embedded_hal::{digital::{OutputPin, StatefulOutputPin}};
+    use embedded_hal_bus::i2c::AtomicDevice;
+    use embedded_hal_bus::util::AtomicCell;
+    // use embedded_time::timer;
+    
+    /// Bind the interrupt handler with the peripheral
     #[shared]
     struct Shared {
         ejector_servo: EjectorServo,
@@ -119,7 +118,7 @@ mod app {
     #[local]
     struct Local {
         led: gpio::Pin<gpio::bank0::Gpio25, FunctionSio<SioOutput>, PullNone>,
-        env_sensor: AsyncBme280<ArbiterDevice<'static, I2CMainBus>, DelayTimer>
+        env_sensor: Bme280<AtomicDevice<'static,I2CMainBus>, DelayTimer>
     }
 
 
@@ -127,7 +126,7 @@ mod app {
         // Task local initialized resources are static
         // Here we use MaybeUninit to allow for initialization in init()
         // This enables its usage in driver initialization
-        i2c_main_bus_arbiter: MaybeUninit<Arbiter<I2CMainBus>> = MaybeUninit::uninit(),
+        i2c_main_bus: MaybeUninit<AtomicCell<I2CMainBus>> = MaybeUninit::uninit(),
     ])]
     fn init(mut ctx: init::Context) -> (Shared, Local) {
 
@@ -235,7 +234,7 @@ mod app {
         let sda_pin = bank0_pins.gpio14.reconfigure();
         let scl_pin = bank0_pins.gpio15.reconfigure();
 
-        let i2c_main_bus: I2CMainBus= I2C::new_controller(
+        let i2c1: I2CMainBus= I2C::new_controller(
             ctx.device.I2C1,
             sda_pin,
             scl_pin,
@@ -244,12 +243,10 @@ mod app {
             clocks.system_clock.freq(),
         );
 
-        let i2c_main_bus_arbiter = ctx.local.i2c_main_bus_arbiter.write(Arbiter::new(i2c_main_bus));
-        let mut delay = hal::Timer::new_timer1(ctx.device.TIMER1, &mut ctx.device.RESETS, &clocks); 
-        let device_arbiter = ArbiterDevice::new(i2c_main_bus_arbiter);
-        // let mut delay = cortex_m::delay::Delay::new(ctx.core.SYST, clocks.system_clock.freq().to_Hz());
-
-        let mut bme280 = AsyncBme280::new(device_arbiter, delay);
+        let i2c_bus = ctx.local.i2c_main_bus.write(AtomicCell::new(i2c1));
+        
+        let mut delay: DelayTimer = rp235x_hal::Timer::new_timer1(ctx.device.TIMER1, &mut ctx.device.RESETS, &clocks); 
+        let mut bme280 = Bme280::new(AtomicDevice::new(i2c_bus), delay);
         
         // Set up USB Device allocator
         let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
@@ -302,7 +299,7 @@ mod app {
             },
             Local { 
                 led: led_pin,
-                env_sensor: bme280
+                env_sensor: bme280,
              },
         )
     }

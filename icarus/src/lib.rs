@@ -1,4 +1,5 @@
 #![no_std]
+
 use rp235x_hal::{
     gpio, pac::I2C1, I2C,
     uart::{
@@ -6,7 +7,6 @@ use rp235x_hal::{
         UartPeripheral
     }
 };
-use embedded_hal_async::i2c::I2c;
 
 pub type UART0Bus = UartPeripheral<
     rp235x_hal::uart::Enabled,
@@ -25,8 +25,8 @@ pub type I2CMainBus = I2C<
     ),
 >;
 
-use embedded_hal_async::delay::DelayNs;
 pub type DelayTimer = rp235x_hal::Timer<rp235x_hal::timer::CopyableTimer1>;
+
 // pub type BME280Device = BME280<rp235x_hal::I2C<I2C1, (gpio::Pin<gpio::bank0::Gpio14, gpio::FunctionI2c, gpio::PullUp>, gpio::Pin<gpio::bank0::Gpio15, gpio::FunctionI2c, gpio::PullUp>)>>;
 // Custom macro for printing to the serial console
 #[macro_export]
