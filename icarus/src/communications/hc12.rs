@@ -1,5 +1,4 @@
 use core::fmt::{self, Write as FmtWrite};
-use defmt::todo;
 use embedded_hal::digital::OutputPin;
 use embedded_io::{Read, ReadReady, Write, WriteReady};
 use fugit::{HertzU32, RateExtU32};

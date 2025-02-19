@@ -6,6 +6,7 @@ pub mod actuators;
 pub mod communications;
 pub mod phases;
 pub mod utilities;
+pub mod sensors;
 
 use panic_halt as _;
 
@@ -24,18 +25,22 @@ pub static IMAGE_DEF: rp235x_hal::block::ImageDef = rp235x_hal::block::ImageDef:
 #[rtic::app(
     device = hal::pac,
     dispatchers = [PIO2_IRQ_0, PIO2_IRQ_1, DMA_IRQ_0],
+    peripherals = true
 )]
 mod app {
+    use super::*;
     use crate::{
-        actuators::servo::{EjectionServoMosfet, EjectorServo, Servo},
+        actuators::{
+            PWM2a,
+            motor::{MotorXPWM, Motor},
+            servo::{EjectionServoMosfet, EjectorServo, Servo},
+        },
         communications::{
             hc12::{UART1Bus, GPIO10},
             link_layer::{Device, LinkPacket},
         },
         phases::EjectorStateMachine,
     };
-
-    use super::*;
 
     use bin_packets::{packets::ApplicationPacket, phases::EjectorPhase};
 
@@ -45,18 +50,23 @@ mod app {
         *,
     };
 
-    use canonical_toolchain::{print, println};
-    use embedded_hal::digital::{OutputPin, StatefulOutputPin};
+    use icarus::{
+        print, println, DelayTimer, I2CMainBus
+    };
+
     use fugit::{Duration, RateExtU32};
     use hal::{
         gpio::{self, FunctionSio, PullNone, SioOutput},
         sio::Sio,
+        
     };
     use rp235x_hal::{
-        clocks::init_clocks_and_plls,
+        clocks::{init_clocks_and_plls},
         pwm::Slices,
         uart::{DataBits, StopBits, UartConfig, UartPeripheral},
         Clock, Watchdog,
+        I2C,
+        pac::I2C1,
     };
     const XTAL_FREQ_HZ: u32 = 12_000_000u32;
 
@@ -66,8 +76,8 @@ mod app {
     use hc12::{BaudRate, HC12};
 
     use rtic_sync::{
-        channel::{Receiver, Sender},
-        make_channel,
+        arbiter::{i2c::ArbiterDevice, Arbiter},
+        channel::{Receiver, Sender}, make_channel
     };
     use serial_handler::{HEAPLESS_STRING_ALLOC_LENGTH, MAX_USB_LINES};
 
@@ -82,7 +92,15 @@ mod app {
 
     static mut USB_BUS: Option<UsbBusAllocator<hal::usb::UsbBus>> = None;
 
-    use core::cmp::max;
+    use core::{
+        cmp::max,
+        mem::MaybeUninit,
+        result::Result
+    };
+    use bme280_rs::{AsyncBme280, Configuration, Oversampling, SensorMode};
+    use embedded_hal_async::delay::DelayNs;
+    use embedded_hal_async::i2c::I2c;
+    use embedded_hal::{digital::{OutputPin, StatefulOutputPin}};
 
     #[shared]
     struct Shared {
@@ -94,15 +112,25 @@ mod app {
         clock_freq_hz: u32,
         state_machine: EjectorStateMachine,
         blink_status_delay_millis: u64,
+        motor_x: MotorXPWM,
+        // delay_timer: DelayTimer
     }
 
     #[local]
     struct Local {
         led: gpio::Pin<gpio::bank0::Gpio25, FunctionSio<SioOutput>, PullNone>,
+        env_sensor: AsyncBme280<ArbiterDevice<'static, I2CMainBus>, DelayTimer>
     }
 
-    #[init]
+
+    #[init(local=[
+        // Task local initialized resources are static
+        // Here we use MaybeUninit to allow for initialization in init()
+        // This enables its usage in driver initialization
+        i2c_main_bus_arbiter: MaybeUninit<Arbiter<I2CMainBus>> = MaybeUninit::uninit(),
+    ])]
     fn init(mut ctx: init::Context) -> (Shared, Local) {
+
         // Reset the spinlocks - this is skipped by soft-reset
         unsafe {
             hal::sio::spinlock_reset();
@@ -169,6 +197,7 @@ mod app {
                 .unwrap();
         uart1_peripheral.enable_rx_interrupt(); // Make sure we can drive our interrupts
 
+
         // Use pin 14 (GPIO10) as the HC12 configuration pin
         let hc12_configure_pin = bank0_pins.gpio10.into_push_pull_output();
         let hc12 = HC12::new(uart1_peripheral, hc12_configure_pin).unwrap();
@@ -191,6 +220,37 @@ mod app {
         ejector_servo.enable();
         ejector_servo.hold();
 
+        // Motor Initialization
+        let mut motor_xy_pwm = pwm_slices.pwm2;
+        motor_xy_pwm.enable();
+        motor_xy_pwm.set_top(65534/2);
+        motor_xy_pwm.set_div_int(1); 
+        let mut motor_x_channel: PWM2a = motor_xy_pwm.channel_a;
+        let motor_x_channel_pin = motor_x_channel.output_to(bank0_pins.gpio4);
+        let mut motor_x = Motor::new(motor_x_channel, motor_x_channel_pin);
+        motor_x.set_speed(0);
+
+        // Sensors
+        // Init I2C pins
+        let sda_pin = bank0_pins.gpio14.reconfigure();
+        let scl_pin = bank0_pins.gpio15.reconfigure();
+
+        let i2c_main_bus: I2CMainBus= I2C::new_controller(
+            ctx.device.I2C1,
+            sda_pin,
+            scl_pin,
+            400.kHz(),
+            &mut ctx.device.RESETS,
+            clocks.system_clock.freq(),
+        );
+
+        let i2c_main_bus_arbiter = ctx.local.i2c_main_bus_arbiter.write(Arbiter::new(i2c_main_bus));
+        let mut delay = hal::Timer::new_timer1(ctx.device.TIMER1, &mut ctx.device.RESETS, &clocks); 
+        let device_arbiter = ArbiterDevice::new(i2c_main_bus_arbiter);
+        // let mut delay = cortex_m::delay::Delay::new(ctx.core.SYST, clocks.system_clock.freq().to_Hz());
+
+        let mut bme280 = AsyncBme280::new(device_arbiter, delay);
+        
         // Set up USB Device allocator
         let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
             ctx.device.USB,
@@ -225,11 +285,10 @@ mod app {
         radio_flush::spawn().ok();
         //incoming_packet_handler::spawn().ok();
         state_machine_update::spawn().ok();
+        // sample_sensors::spawn(i2c_main_bus_arbiter).ok();
 
         (
             Shared {
-                //uart0: uart0_peripheral,
-                //uart0_buffer,
                 radio_link,
                 ejector_servo,
                 usb_device: usb_dev,
@@ -238,8 +297,13 @@ mod app {
                 clock_freq_hz: clock_freq.to_Hz(),
                 state_machine: EjectorStateMachine::new(),
                 blink_status_delay_millis: 1000,
+                motor_x: motor_x,
+                // delay_timer: delay_timer,
             },
-            Local { led: led_pin },
+            Local { 
+                led: led_pin,
+                env_sensor: bme280
+             },
         )
     }
 
@@ -754,4 +818,19 @@ mod app {
             }
         }
     }
+
+    // #[task(local = [env_sensor], shared=[serial_console_writer, delay_timer], priority = 2)]
+    // async fn sample_sensors(mut ctx: sample_sensors::Context, i2c: &'static Arbiter<I2c<'static, I2C1>>) {
+    //     let mut motor_x_address = 0x01u8;
+    //     let motor_isd_address = 0x80u8;
+    //     let mut data = [0,0,0,0];
+    //     loop{
+    //         ctx.shared.delay_timer.lock(|delay_timer_unlock|{
+    //             let measurements = ctx.local.env_sensor.measure(delay_timer_unlock).unwrap();
+    //             println!(ctx, "Relative Humidity = {}%", measurements.humidity);
+    //             println!(ctx, "Temperature = {} deg C", measurements.temperature);
+    //             println!(ctx, "Pressure = {} pascals", measurements.pressure);
+    //         });
+    //     }
+    // }
 }
