@@ -4,6 +4,3 @@
 [submodule "pico-sdk"]
 	path = pico-sdk
 	url = https://github.com/raspberrypi/pico-sdk.git
-[submodule "bin-packets"]
-	path = bin-packets
-	url = git@github.com:Terminus-Suborbital-Research-Program/bin-packets.git
