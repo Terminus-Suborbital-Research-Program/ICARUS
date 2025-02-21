@@ -40,10 +40,12 @@ fugit = "0.3.7"
 defmt = "0.3"
 defmt-rtt = "0.4.1"
 heapless = "0.8.0"
-bincode = {version="2.0.0-rc.3", features = ["derive"], default-features = false}
+bincode = {version="2.0.0-rc.3", features = ["derive", "alloc"], default-features = false}
 
 # Packets
 bin-packets = {git="https://github.com/Terminus-Suborbital-Research-Program/bin-packets.git"}
+# Allocator - requireed to get serde to work
+linked_list_allocator = "0.10.5"
 
 # Sensors
 bme280-rs = { version = "0.3.0", features=["async"]}
@@ -51,6 +53,8 @@ bmi323 = {path="../bmi323"}
 #bmi323 = {git"https://github.com/MeechaelA/bmi323.git"} - Request Access
 bmm350 = {path="../bmm350"}
 #bmm350 = {git"https://github.com/MeechaelA/bmm350.git"} - Request Access
+
+
 
 [workspace]
 members = [

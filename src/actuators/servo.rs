@@ -15,26 +15,26 @@ pub type EjectionServo = Servo<
     gpio::Pin<EjectionServoPin, gpio::FunctionPwm, gpio::PullDown>,
     EjectionServoMosfet,
 >;
-// // Locking servo on ejector TURN NEGATIVE TO UNLOCK
-// pub type LockingServoPin = gpio::bank0::Gpio2; // Physical pin 6
-// pub type LockingServoPwm = rp235x_hal::pwm::Pwm1;
-// pub type LockingServoSlice = Slice<LockingServoPwm, FreeRunning>;
-// pub type LockingServo = Servo<
-//     Channel<LockingServoSlice, A>,
-//     gpio::Pin<LockingServoPin, gpio::FunctionPwm, gpio::PullDown>,
-//     LockingServoMosfet,
-// >;
-// pub type LockingServoMosfet =
-//     gpio::Pin<gpio::bank0::Gpio3, gpio::FunctionSioOutput, gpio::PullDown>;
+// Locking servo on ejector TURN NEGATIVE TO UNLOCK
+pub type LockingServoPin = gpio::bank0::Gpio2; // Physical pin 6
+pub type LockingServoPwm = rp235x_hal::pwm::Pwm1;
+pub type LockingServoSlice = Slice<LockingServoPwm, FreeRunning>;
+pub type LockingServo = Servo<
+    Channel<LockingServoSlice, A>,
+    gpio::Pin<LockingServoPin, gpio::FunctionPwm, gpio::PullDown>,
+    LockingServoMosfet,
+>;
+pub type LockingServoMosfet =
+    gpio::Pin<gpio::bank0::Gpio3, gpio::FunctionSioOutput, gpio::PullDown>;
 
 // For the servo
 static MAX_DUTY: u32 = 8200;
 static MIN_DUTY: u32 = 2200;
 
-pub static HOLDING_ANGLE: u16 = 100;
-pub static EJECTION_ANGLE: u16 = 70;
-// pub static LOCKING_SERVO_LOCKED: u16 = 105;
-// pub static LOCKING_SERVO_UNLOCKED: u16 = 20;
+pub static EJECTION_ANGLE: u16 = 145;
+pub static HOLDING_ANGLE: u16 = 90;
+pub static LOCKING_SERVO_LOCKED: u16 = 105;
+pub static LOCKING_SERVO_UNLOCKED: u16 = 20;
 
 pub struct Servo<C, P, M: OutputPin> {
     channel: C,
@@ -73,44 +73,5 @@ where
 
     pub fn disable(&mut self) {
         self.mosfet_pin.set_low().unwrap();
-    }
-}
-
-// Ejector servo
-pub struct EjectorServo {
-    servo: Servo<
-        Channel<EjectionServoSlice, A>,
-        gpio::Pin<EjectionServoPin, gpio::FunctionPwm, gpio::PullDown>,
-        EjectionServoMosfet,
-    >,
-}
-
-impl EjectorServo {
-    pub fn new(
-        servo: Servo<
-            Channel<EjectionServoSlice, A>,
-            gpio::Pin<EjectionServoPin, gpio::FunctionPwm, gpio::PullDown>,
-            EjectionServoMosfet,
-        >,
-    ) -> Self {
-        Self { servo }
-    }
-
-    pub fn eject(&mut self) {
-        self.servo.set_angle(EJECTION_ANGLE);
-        self.servo.enable();
-    }
-
-    pub fn hold(&mut self) {
-        self.servo.set_angle(HOLDING_ANGLE);
-        self.servo.enable();
-    }
-
-    pub fn disable(&mut self) {
-        self.servo.disable();
-    }
-
-    pub fn enable(&mut self) {
-        self.servo.enable();
     }
 }
