@@ -1,16 +1,13 @@
 use bincode::{
     config::standard,
-    decode_from_slice, encode_into_slice,
+    enc::write::Writer,
+    encode_into_slice,
     error::{DecodeError, EncodeError},
     Decode, Encode,
 };
 use embedded_io::{Read, Write};
 
-use heapless::Vec;
-
-type Buffer = Vec<u8, 256>;
-
-use bin_packets::packets::ApplicationPacket;
+use bin_packets::ApplicationPacket;
 
 #[derive(Debug, Clone, Copy, Encode, Decode)]
 #[allow(non_camel_case_types)]
@@ -55,10 +52,8 @@ impl LinkPacket {
             hash = hash.wrapping_mul(fnv_prime);
         }
 
-        let mut buffer = [0u8; 256];
-        let bytes = bincode::encode_into_slice(&self.payload, &mut buffer, standard()).unwrap();
-        for byte in &buffer[0..bytes] {
-            hash ^= *byte as u32;
+        for byte in bincode::encode_to_vec(&self.payload, standard()).unwrap() {
+            hash ^= byte as u32;
             hash = hash.wrapping_mul(fnv_prime);
         }
 
@@ -96,16 +91,11 @@ impl Default for LinkPacket {
 pub struct LinkLayerDevice<D> {
     pub device: D,
     pub me: Device,
-    buffer: Buffer,
 }
 
 impl<D> LinkLayerDevice<D> {
     pub fn new(device: D, me: Device) -> Self {
-        Self {
-            device,
-            me,
-            buffer: Buffer::new(),
-        }
+        Self { device, me }
     }
 
     pub fn construct_packet(&self, packload: ApplicationPacket, to: Device) -> LinkPacket {
@@ -139,49 +129,9 @@ where
 
 // When we can read, we can decode packets from the underlying device
 impl<D> LinkLayerDevice<D>
-where
-    D: Read,
-{
-    pub fn read_link_packet(&mut self) -> Option<LinkPacket> {
-        let config = standard();
-
-        // Read in to the buffer
-        let mut slice = [0u8; 128];
-        let read = self.device.read(&mut slice).ok();
-        if let Some(read) = read {
-            for i in 0..read {
-                self.buffer.push(slice[i]).ok();
-            }
-        } else {
-            return None;
+    where
+        D: Read,{
+        pub fn read_link_packet(&mut self) -> Result<LinkPacket, DecodeError> {
+            todo!();
         }
-
-        loop {
-            // Try to decode a packet from the current buffer
-            match decode_from_slice(&self.buffer, config) {
-                Ok((packet, read_bytes)) => {
-                    for _ in 0..read_bytes {
-                        self.buffer.remove(0); // Innefficient, but it works
-                    }
-                    return Some(packet);
-                }
-
-                Err(e) => match e {
-                    // If we're out of data, then return none
-                    DecodeError::UnexpectedEnd { .. } => {
-                        return None;
-                    }
-
-                    _ => {
-                        // Pop off the first byte and try again
-                        self.buffer.remove(0);
-                    }
-                },
-            }
-
-            if self.buffer.len() == 0 {
-                return None;
-            }
-        }
-    }
 }

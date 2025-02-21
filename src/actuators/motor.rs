@@ -4,7 +4,6 @@ use crate::actuators::PWM2a;
 // Motors Configuration
 pub type MotorXPWM = Motor<PWM2a, rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio4, rp235x_hal::gpio::FunctionPwm, rp235x_hal::gpio::PullDown>>;
 
-
 pub struct Motor<C, P> {
     channel: C,
     _pin: P, // Consume this pin please
