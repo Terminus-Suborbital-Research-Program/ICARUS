@@ -31,10 +31,10 @@ pub type LockingServoMosfet =
 static MAX_DUTY: u32 = 8200;
 static MIN_DUTY: u32 = 2200;
 
-pub static EJECTION_ANGLE: u16 = 145;
-pub static HOLDING_ANGLE: u16 = 90;
-pub static LOCKING_SERVO_LOCKED: u16 = 105;
-pub static LOCKING_SERVO_UNLOCKED: u16 = 20;
+pub static EJECTION_ANGLE: u16 = 100;
+pub static HOLDING_ANGLE: u16 = 70;
+// pub static LOCKING_SERVO_LOCKED: u16 = 105;
+// pub static LOCKING_SERVO_UNLOCKED: u16 = 20;
 
 pub struct Servo<C, P, M: OutputPin> {
     channel: C,

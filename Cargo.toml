@@ -48,7 +48,7 @@ bin-packets = {git="https://github.com/Terminus-Suborbital-Research-Program/bin-
 linked_list_allocator = "0.10.5"
 
 # Sensors
-bme280-rs = { version = "0.3.0", features=["async"]}
+bme280 = { version = "0.5.1"}
 bmi323 = {path="../bmi323"}
 #bmi323 = {git"https://github.com/MeechaelA/bmi323.git"} - Request Access
 bmm350 = {path="../bmm350"}

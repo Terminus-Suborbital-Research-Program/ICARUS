@@ -24,7 +24,7 @@ use core::{
     cmp::max,
     mem::MaybeUninit,
 };
-use bme280_rs::{AsyncBme280, Bme280};
+use bme280::i2c::BME280;
 use embedded_hal::{digital::{OutputPin, StatefulOutputPin}};
 use embedded_hal_bus::i2c::AtomicDevice;
 use embedded_hal_bus::util::AtomicCell;
@@ -102,7 +102,8 @@ mod app {
         pub usb_device: UsbDevice<'static, hal::usb::UsbBus>,
         pub serial_console_writer: serial_handler::SerialWriter,
         pub clock_freq_hz: u32,
-        pub env_sensor: Bme280<AtomicDevice<'static,I2CMainBus>, DelayTimer>
+        pub software_delay: DelayTimer,
+        pub env_sensor: BME280<AtomicDevice<'static,I2CMainBus>>
     }
 
     #[local]
@@ -134,7 +135,7 @@ mod app {
 
     extern "Rust" {
         // USB Console Reader
-        #[task(priority = 3, shared = [usb_device, usb_serial, serial_console_writer])]
+        #[task(priority = 2, shared = [usb_device, usb_serial, serial_console_writer])]
         async fn usb_console_reader(
             mut ctx: usb_console_reader::Context,
             mut command_sender: Sender<
@@ -145,7 +146,7 @@ mod app {
         );
 
         // USB Console Printer
-        #[task(priority = 3, shared = [usb_device, usb_serial])]
+        #[task(priority = 2, shared = [usb_device, usb_serial])]
         async fn usb_serial_console_printer(
             mut ctx: usb_serial_console_printer::Context,
             mut reciever: Receiver<
@@ -174,7 +175,7 @@ mod app {
         #[task(shared = [radio_link], priority = 1)]
         async fn radio_flush(mut ctx: radio_flush::Context);
 
-        #[task(shared = [env_sensor], priority = 1)]
+        #[task(shared = [serial_console_writer, software_delay, env_sensor], priority = 3)]
         async fn sample_sensors(mut ctx: sample_sensors::Context);
         
     }

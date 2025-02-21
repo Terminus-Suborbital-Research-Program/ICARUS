@@ -1,3 +1,4 @@
+use bme280::i2c::BME280;
 use embedded_hal::digital::OutputPin;
 use fugit::RateExtU32;
 use fugit::RateExtU64;
@@ -36,7 +37,6 @@ use crate::Mono;
 use crate::ALLOCATOR;
 use crate::HEAP_MEMORY;
 
-use bme280_rs::{AsyncBme280, Bme280};
 use embedded_hal_bus::i2c::AtomicDevice;
 use embedded_hal_bus::util::AtomicCell;
 
@@ -175,8 +175,8 @@ pub fn startup(mut ctx: init::Context) -> (Shared, Local) {
     let i2c_bus = ctx.local.i2c_main_bus.write(AtomicCell::new(i2c1));
     
     let mut delay: DelayTimer = rp235x_hal::Timer::new_timer1(ctx.device.TIMER1, &mut ctx.device.RESETS, &clocks); 
-    let mut bme280 = Bme280::new(AtomicDevice::new(i2c_bus), delay);
-
+    let mut bme280 = BME280::new_primary(AtomicDevice::new(i2c_bus));
+    bme280.init(&mut delay);
 
     // Set up USB Device allocator
     let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
@@ -206,6 +206,7 @@ pub fn startup(mut ctx: init::Context) -> (Shared, Local) {
     command_handler::spawn(usb_console_command_receiver).ok();
     radio_flush::spawn().ok();
     incoming_packet_handler::spawn().ok();
+    sample_sensors::spawn().ok();
 
     // Serial Writer Structure
     let serial_console_writer = serial_handler::SerialWriter::new(usb_console_line_sender);
@@ -221,6 +222,7 @@ pub fn startup(mut ctx: init::Context) -> (Shared, Local) {
             usb_serial: serial,
             serial_console_writer,
             clock_freq_hz: clock_freq.to_Hz(),
+            software_delay: delay,
             env_sensor: bme280
             
         },
