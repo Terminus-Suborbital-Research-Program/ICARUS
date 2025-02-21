@@ -11,6 +11,7 @@ use rp235x_hal::uart::UartPeripheral;
 use rp235x_hal::Clock;
 use rp235x_hal::Sio;
 use rp235x_hal::Watchdog;
+use rp235x_hal::I2C;
 use rtic_sync::make_channel;
 use usb_device::bus::UsbBusAllocator;
 use usb_device::device::StringDescriptors;
@@ -18,10 +19,10 @@ use usb_device::device::UsbDeviceBuilder;
 use usb_device::device::UsbVidPid;
 use usbd_serial::SerialPort;
 
-use crate::actuators::servo::EjectionServoMosfet;
-use crate::actuators::servo::LockingServoMosfet;
-use crate::actuators::servo::Servo;
-use crate::actuators::servo::LOCKING_SERVO_LOCKED;
+use crate::actuators::{PWM2a};
+use crate::actuators::servo::{EjectionServoMosfet, LockingServoMosfet, Servo, LOCKING_SERVO_LOCKED};
+use crate::actuators::motor::{Motor, MotorXPWM};
+
 use crate::app::*;
 use crate::communications::hc12::HC12;
 use crate::communications::link_layer::Device;
@@ -29,10 +30,15 @@ use crate::communications::link_layer::LinkLayerDevice;
 use crate::communications::serial_handler;
 use crate::communications::serial_handler::HeaplessString;
 use crate::communications::serial_handler::MAX_USB_LINES;
+use crate::{I2CMainBus, DelayTimer};
 use crate::hal;
 use crate::Mono;
 use crate::ALLOCATOR;
 use crate::HEAP_MEMORY;
+
+use bme280_rs::{AsyncBme280, Bme280};
+use embedded_hal_bus::i2c::AtomicDevice;
+use embedded_hal_bus::util::AtomicCell;
 
 pub fn startup(mut ctx: init::Context) -> (Shared, Local) {
     // Reset the spinlocks - this is skipped by soft-reset
@@ -142,6 +148,36 @@ pub fn startup(mut ctx: init::Context) -> (Shared, Local) {
     let mut locking_servo = Servo::new(locking_channel_a, locking_channel_pin, locking_mosfet_pin);
     locking_servo.set_angle(LOCKING_SERVO_LOCKED);
 
+    // Motor Initialization
+    let mut motor_xy_pwm = pwm_slices.pwm2;
+    motor_xy_pwm.enable();
+    motor_xy_pwm.set_top(65534/2);
+    motor_xy_pwm.set_div_int(1); 
+    let mut motor_x_channel: PWM2a = motor_xy_pwm.channel_a;
+    let motor_x_channel_pin = motor_x_channel.output_to(bank0_pins.gpio4);
+    let mut motor_x = Motor::new(motor_x_channel, motor_x_channel_pin);
+    motor_x.set_speed(0);
+
+    // Sensors
+    // Init I2C pins
+    let sda_pin = bank0_pins.gpio14.reconfigure();
+    let scl_pin = bank0_pins.gpio15.reconfigure();
+
+    let i2c1: I2CMainBus= I2C::new_controller(
+        ctx.device.I2C1,
+        sda_pin,
+        scl_pin,
+        RateExtU32::kHz(400),
+        &mut ctx.device.RESETS,
+        clocks.system_clock.freq(),
+    );
+
+    let i2c_bus = ctx.local.i2c_main_bus.write(AtomicCell::new(i2c1));
+    
+    let mut delay: DelayTimer = rp235x_hal::Timer::new_timer1(ctx.device.TIMER1, &mut ctx.device.RESETS, &clocks); 
+    let mut bme280 = Bme280::new(AtomicDevice::new(i2c_bus), delay);
+
+
     // Set up USB Device allocator
     let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
         ctx.device.USB,
@@ -185,6 +221,8 @@ pub fn startup(mut ctx: init::Context) -> (Shared, Local) {
             usb_serial: serial,
             serial_console_writer,
             clock_freq_hz: clock_freq.to_Hz(),
+            env_sensor: bme280
+            
         },
         Local { led: led_pin },
     )

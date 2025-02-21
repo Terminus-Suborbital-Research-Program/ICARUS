@@ -20,6 +20,16 @@ use linked_list_allocator::LockedHeap;
 use crate::tasks::*;
 use crate::usb_commands::*;
 use crate::usb_io::*;
+use core::{
+    cmp::max,
+    mem::MaybeUninit,
+};
+use bme280_rs::{AsyncBme280, Bme280};
+use embedded_hal::{digital::{OutputPin, StatefulOutputPin}};
+use embedded_hal_bus::i2c::AtomicDevice;
+use embedded_hal_bus::util::AtomicCell;
+use icarus::{I2CMainBus, DelayTimer};
+
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -92,6 +102,7 @@ mod app {
         pub usb_device: UsbDevice<'static, hal::usb::UsbBus>,
         pub serial_console_writer: serial_handler::SerialWriter,
         pub clock_freq_hz: u32,
+        pub env_sensor: Bme280<AtomicDevice<'static,I2CMainBus>, DelayTimer>
     }
 
     #[local]
@@ -99,7 +110,14 @@ mod app {
         pub led: gpio::Pin<gpio::bank0::Gpio25, FunctionSio<SioOutput>, PullNone>,
     }
 
-    #[init]
+    #[init(
+        local=[
+            // Task local initialized resources are static
+            // Here we use MaybeUninit to allow for initialization in init()
+            // This enables its usage in driver initialization
+            i2c_main_bus: MaybeUninit<AtomicCell<I2CMainBus>> = MaybeUninit::uninit(),
+        ]
+    )]
     fn init(ctx: init::Context) -> (Shared, Local) {
         startup::startup(ctx)
     }
