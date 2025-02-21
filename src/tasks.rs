@@ -184,3 +184,6 @@ pub async fn incoming_packet_handler(mut ctx: incoming_packet_handler::Context<'
         Mono::delay(10_u64.millis()).await;
     }
 }
+
+pub async fn sample_sensors(mut ctx: sample_sensors::Context<'_>) {
+}

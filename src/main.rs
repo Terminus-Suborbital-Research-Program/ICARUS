@@ -173,5 +173,9 @@ mod app {
         // Radio Flush Task
         #[task(shared = [radio_link], priority = 1)]
         async fn radio_flush(mut ctx: radio_flush::Context);
+
+        #[task(shared = [env_sensor], priority = 1)]
+        async fn sample_sensors(mut ctx: sample_sensors::Context);
+        
     }
 }
